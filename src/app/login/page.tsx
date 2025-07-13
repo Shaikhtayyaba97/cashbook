@@ -26,12 +26,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { HandCoins, KeyRound, MessageSquareCode } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Terminal } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { t, dir } = useLanguage();
   const [step, setStep] = useState(1);
+  const [fakeOtp, setFakeOtp] = useState<string | null>(null);
 
   const loginSchema = z.object({
     phone: z.string().min(10, "Phone number is too short"),
@@ -54,7 +57,9 @@ export default function LoginPage() {
 
   function onLoginSubmit(values: z.infer<typeof loginSchema>) {
     console.log(values);
-    // In a real app, you'd call your auth API here.
+    // In a real app, you'd call your auth API here to send an OTP.
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    setFakeOtp(generatedOtp);
     setStep(2);
   }
 
@@ -82,7 +87,9 @@ export default function LoginPage() {
             {t("appName")}
           </CardTitle>
           <CardDescription>
-            {step === 1 ? "Enter your credentials to login" : "Enter the OTP sent to your phone"}
+            {step === 1
+              ? "Enter your credentials to login"
+              : "Enter the OTP sent to your phone"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -134,6 +141,16 @@ export default function LoginPage() {
                 onSubmit={otpForm.handleSubmit(onOtpSubmit)}
                 className="space-y-4"
               >
+                {fakeOtp && (
+                  <Alert>
+                    <Terminal className="h-4 w-4" />
+                    <AlertTitle>Demo OTP</AlertTitle>
+                    <AlertDescription>
+                      Your one-time password is:{" "}
+                      <strong className="font-mono">{fakeOtp}</strong>
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <FormField
                   control={otpForm.control}
                   name="otp"
