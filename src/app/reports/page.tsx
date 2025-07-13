@@ -22,14 +22,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUpRight, ArrowDownLeft, Scale } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ArrowUpRight, ArrowDownLeft, Scale, Pencil, Trash2 } from "lucide-react";
+import { TransactionDialog } from "@/components/transaction-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ReportsPage() {
   const { t } = useLanguage();
+  const { toast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().getMonth().toString()
   );
+  
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"in" | "out">("in");
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -46,6 +55,31 @@ export default function ReportsPage() {
         setTransactions([]);
       }
     }
+  }, []);
+
+  useEffect(() => {
+    // This effect runs when transactions change on another page
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'transactions') {
+        try {
+            const savedTransactions = window.localStorage.getItem("transactions");
+            if (savedTransactions) {
+                setTransactions(JSON.parse(savedTransactions).map((tx: Transaction) => ({
+                    ...tx,
+                    date: new Date(tx.date),
+                })));
+            }
+        } catch (error) {
+            console.error("Error reading from localStorage", error);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const months = Array.from({ length: 12 }, (_, i) => ({
@@ -73,6 +107,42 @@ export default function ReportsPage() {
       { totalIn: 0, totalOut: 0, netBalance: 0 }
     );
   }, [filteredTransactions]);
+  
+  const handleAddOrUpdateTransaction = (transactionData: Omit<Transaction, "id" | "date"> & { id?: string; date?: Date }) => {
+    let updatedTransactions;
+    if (editingTransaction && transactionData.id) {
+      updatedTransactions = transactions.map(tx => 
+        tx.id === transactionData.id ? { ...tx, ...transactionData, date: tx.date } : tx
+      );
+      toast({ title: "✅ Transaction updated!" });
+    } else {
+      updatedTransactions = [
+        { ...transactionData, id: new Date().toISOString(), date: new Date() },
+        ...transactions,
+      ];
+    }
+    setTransactions(updatedTransactions);
+    window.localStorage.setItem("transactions", JSON.stringify(updatedTransactions));
+    setEditingTransaction(null);
+  };
+
+  const handleDeleteTransaction = (id: string) => {
+    const updatedTransactions = transactions.filter(tx => tx.id !== id);
+    setTransactions(updatedTransactions);
+    window.localStorage.setItem("transactions", JSON.stringify(updatedTransactions));
+    toast({ title: "🗑️ Transaction deleted", variant: "destructive" });
+  };
+  
+  const openDialog = (mode: "in" | "out", transaction: Transaction | null = null) => {
+    setDialogMode(mode);
+    setEditingTransaction(transaction);
+    setDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingTransaction(null);
+  }
 
   return (
     <MainLayout>
@@ -140,7 +210,8 @@ export default function ReportsPage() {
                   <TableHead>{t("date")}</TableHead>
                   <TableHead>{t("description")}</TableHead>
                   <TableHead>{t("type")}</TableHead>
-                  <TableHead className="text-right">{t("amount")}</TableHead>
+                  <TableHead>{t("amount")}</TableHead>
+                  <TableHead className="text-right">{t("actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -162,18 +233,44 @@ export default function ReportsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell
-                        className={`text-right font-medium ${
+                        className={`font-medium ${
                           tx.type === "in" ? "text-accent" : "text-destructive"
                         }`}
                       >
                         {tx.type === "in" ? "+" : "-"} PKR {tx.amount.toLocaleString()}
                       </TableCell>
+                      <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDialog(tx.type, tx)}>
+                              <Pencil className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone. This will permanently delete this transaction.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteTransaction(tx.id)} className="bg-destructive hover:bg-destructive/90">
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center h-24">
-                      {t("no_transactions")}
+                    <TableCell colSpan={5} className="text-center h-24">
+                      {t("no_transactions_month")}
                     </TableCell>
                   </TableRow>
                 )}
@@ -183,6 +280,13 @@ export default function ReportsPage() {
         </Card>
 
       </div>
+      <TransactionDialog
+        open={dialogOpen}
+        onOpenChange={closeDialog}
+        mode={dialogMode}
+        onSubmit={handleAddOrUpdateTransaction}
+        transaction={editingTransaction}
+      />
     </MainLayout>
   );
 }

@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
@@ -15,13 +16,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { PlusCircle, MinusCircle, Wallet } from "lucide-react";
+import { PlusCircle, MinusCircle, Wallet, Pencil, Trash2 } from "lucide-react";
 import { TransactionDialog } from "@/components/transaction-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+
 
 const initialTransactions: Transaction[] = [];
 
 export default function DashboardPage() {
   const { t } = useLanguage();
+  const { toast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     if (typeof window === 'undefined') {
       return initialTransactions;
@@ -29,7 +34,6 @@ export default function DashboardPage() {
     try {
       const savedTransactions = window.localStorage.getItem("transactions");
       if (savedTransactions) {
-        // Parse and revive dates
         return JSON.parse(savedTransactions).map((tx: Transaction) => ({
           ...tx,
           date: new Date(tx.date),
@@ -43,6 +47,7 @@ export default function DashboardPage() {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"in" | "out">("in");
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   useEffect(() => {
     try {
@@ -59,17 +64,38 @@ export default function DashboardPage() {
     }, 0);
   }, [transactions]);
 
-  const handleAddTransaction = (newTransaction: Omit<Transaction, "id">) => {
-    setTransactions([
-      { ...newTransaction, id: new Date().toISOString() },
-      ...transactions,
-    ]);
+  const handleAddOrUpdateTransaction = (transactionData: Omit<Transaction, "id" | "date"> & { id?: string; date?: Date }) => {
+    if (editingTransaction && transactionData.id) {
+      // Update existing transaction
+      setTransactions(transactions.map(tx => 
+        tx.id === transactionData.id ? { ...tx, ...transactionData, date: tx.date } : tx
+      ));
+      toast({ title: "✅ Transaction updated!" });
+    } else {
+      // Add new transaction
+      setTransactions([
+        { ...transactionData, id: new Date().toISOString(), date: new Date() },
+        ...transactions,
+      ]);
+    }
+    setEditingTransaction(null);
+  };
+  
+  const handleDeleteTransaction = (id: string) => {
+    setTransactions(transactions.filter(tx => tx.id !== id));
+    toast({ title: "🗑️ Transaction deleted", variant: "destructive" });
   };
 
-  const openDialog = (mode: "in" | "out") => {
+  const openDialog = (mode: "in" | "out", transaction: Transaction | null = null) => {
     setDialogMode(mode);
+    setEditingTransaction(transaction);
     setDialogOpen(true);
   };
+  
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setEditingTransaction(null);
+  }
 
   return (
     <MainLayout>
@@ -112,7 +138,8 @@ export default function DashboardPage() {
                   <TableHead>{t("date")}</TableHead>
                   <TableHead>{t("description")}</TableHead>
                   <TableHead>{t("type")}</TableHead>
-                  <TableHead className="text-right">{t("amount")}</TableHead>
+                  <TableHead>{t("amount")}</TableHead>
+                  <TableHead className="text-right">{t("actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -134,17 +161,43 @@ export default function DashboardPage() {
                         </Badge>
                       </TableCell>
                       <TableCell
-                        className={`text-right font-medium ${
+                        className={`font-medium ${
                           tx.type === "in" ? "text-accent" : "text-destructive"
                         }`}
                       >
                         {tx.type === "in" ? "+" : "-"} PKR {tx.amount.toLocaleString()}
                       </TableCell>
+                      <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDialog(tx.type, tx)}>
+                              <Pencil className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone. This will permanently delete this transaction.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteTransaction(tx.id)} className="bg-destructive hover:bg-destructive/90">
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center">
+                    <TableCell colSpan={5} className="text-center">
                       {t("no_transactions")}
                     </TableCell>
                   </TableRow>
@@ -156,9 +209,10 @@ export default function DashboardPage() {
       </div>
       <TransactionDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={closeDialog}
         mode={dialogMode}
-        onSubmit={handleAddTransaction}
+        onSubmit={handleAddOrUpdateTransaction}
+        transaction={editingTransaction}
       />
     </MainLayout>
   );

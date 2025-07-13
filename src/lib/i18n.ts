@@ -1,3 +1,4 @@
+
 export const translations = {
   en: {
     appName: "UrduCash",
@@ -30,6 +31,10 @@ export const translations = {
     all_transactions: "All Transactions",
     amount_required: "Amount is required.",
     description_required: "Description is required.",
+    actions: "Actions",
+    edit_transaction: "Edit Transaction",
+    update: "Update",
+    no_transactions_month: "No transactions for this month.",
   },
   ur: {
     appName: "اردو کیش",
@@ -62,6 +67,10 @@ export const translations = {
     all_transactions: "تمام لین دین",
     amount_required: "رقم درکار ہے۔",
     description_required: "تفصیل درکار ہے۔",
+    actions: "کاروائیاں",
+    edit_transaction: "ٹرانزیکشن میں ترمیم کریں",
+    update: "اپ ڈیٹ",
+    no_transactions_month: "اس مہینے کے لیے کوئی لین دین نہیں ہے۔",
   },
 };
 
