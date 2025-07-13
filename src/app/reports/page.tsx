@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import MainLayout from "@/components/main-layout";
 import { useLanguage } from "@/contexts/language-provider";
@@ -29,6 +29,7 @@ import { ArrowUpRight, ArrowDownLeft, Scale, Pencil, Trash2 } from "lucide-react
 import { TransactionDialog } from "@/components/transaction-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { getTransactions, addTransaction, updateTransaction, deleteTransaction } from "@/services/transaction-service";
 
 export default function ReportsPage() {
   const { t } = useLanguage();
@@ -37,6 +38,7 @@ export default function ReportsPage() {
   const router = useRouter();
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().getMonth().toString()
   );
@@ -50,49 +52,33 @@ export default function ReportsPage() {
       router.push("/login");
     }
   }, [isAuthenticated, router]);
-
-  useEffect(() => {
+  
+  const loadTransactions = useCallback(async () => {
     if (isAuthenticated && userPhone) {
-      try {
-        const savedTransactions = window.localStorage.getItem(`transactions-${userPhone}`);
-        if (savedTransactions) {
-          setTransactions(JSON.parse(savedTransactions).map((tx: Transaction) => ({
-            ...tx,
-            date: new Date(tx.date),
-          })));
-        } else {
-            setTransactions([]);
-        }
-      } catch (error) {
-        console.error("Error reading from localStorage", error);
-        setTransactions([]);
-      }
+      setIsLoading(true);
+      const userTransactions = await getTransactions(userPhone);
+      setTransactions(userTransactions);
+      setIsLoading(false);
     }
   }, [isAuthenticated, userPhone]);
 
   useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+  
+  // This effect listens for storage changes from other tabs, which is a good pattern.
+  useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
       if (isAuthenticated && userPhone && event.key === `transactions-${userPhone}`) {
-        try {
-            const savedTransactions = window.localStorage.getItem(`transactions-${userPhone}`);
-            if (savedTransactions) {
-                setTransactions(JSON.parse(savedTransactions).map((tx: Transaction) => ({
-                    ...tx,
-                    date: new Date(tx.date),
-                })));
-            }
-        } catch (error) {
-            console.error("Error reading from localStorage", error);
-        }
+        loadTransactions();
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
-
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [isAuthenticated, userPhone]);
+  }, [isAuthenticated, userPhone, loadTransactions]);
 
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i.toString(),
@@ -101,7 +87,7 @@ export default function ReportsPage() {
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(
-      (tx) => tx.date.getMonth().toString() === selectedMonth
+      (tx) => new Date(tx.date).getMonth().toString() === selectedMonth
     );
   }, [transactions, selectedMonth]);
 
@@ -120,32 +106,23 @@ export default function ReportsPage() {
     );
   }, [filteredTransactions]);
   
-  const handleAddOrUpdateTransaction = (transactionData: Omit<Transaction, "id" | "date"> & { id?: string; date?: Date }) => {
-    let updatedTransactions;
+  const handleAddOrUpdateTransaction = async (transactionData: Omit<Transaction, "id" | "date"> & { id?: string; date?: Date }) => {
+    if (!userPhone) return;
+    
     if (editingTransaction && transactionData.id) {
-      updatedTransactions = transactions.map(tx => 
-        tx.id === transactionData.id ? { ...tx, ...transactionData, date: tx.date } : tx
-      );
+       await updateTransaction(userPhone, { ...transactionData, date: editingTransaction.date } as Transaction);
       toast({ title: "✅ Transaction updated!" });
     } else {
-      updatedTransactions = [
-        { ...transactionData, id: new Date().toISOString(), date: new Date() },
-        ...transactions,
-      ];
+       await addTransaction(userPhone, { ...transactionData, type: dialogMode });
     }
-    setTransactions(updatedTransactions);
-    if (isAuthenticated && userPhone) {
-        window.localStorage.setItem(`transactions-${userPhone}`, JSON.stringify(updatedTransactions));
-    }
+    await loadTransactions();
     setEditingTransaction(null);
   };
 
-  const handleDeleteTransaction = (id: string) => {
-    const updatedTransactions = transactions.filter(tx => tx.id !== id);
-    setTransactions(updatedTransactions);
-     if (isAuthenticated && userPhone) {
-        window.localStorage.setItem(`transactions-${userPhone}`, JSON.stringify(updatedTransactions));
-    }
+  const handleDeleteTransaction = async (id: string) => {
+    if (!userPhone) return;
+    await deleteTransaction(userPhone, id);
+    await loadTransactions();
     toast({ title: "🗑️ Transaction deleted", variant: "destructive" });
   };
   
@@ -160,8 +137,14 @@ export default function ReportsPage() {
     setEditingTransaction(null);
   }
 
-  if (!isAuthenticated) {
-    return null;
+  if (!isAuthenticated || isLoading) {
+    return (
+      <MainLayout>
+        <div className="flex justify-center items-center h-full">
+           <p>Loading...</p>
+        </div>
+      </MainLayout>
+    )
   }
 
   return (
@@ -236,10 +219,10 @@ export default function ReportsPage() {
               </TableHeader>
               <TableBody>
                 {filteredTransactions.length > 0 ? (
-                  filteredTransactions.sort((a,b) => b.date.getTime() - a.date.getTime()).map((tx) => (
+                  filteredTransactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((tx) => (
                     <TableRow key={tx.id}>
                        <TableCell>
-                        {tx.date.toLocaleDateString()}
+                        {new Date(tx.date).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="font-medium">
                         {tx.description}

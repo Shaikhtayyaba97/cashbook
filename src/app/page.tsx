@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { Transaction } from "@/lib/types";
 import { useLanguage } from "@/contexts/language-provider";
@@ -22,9 +22,8 @@ import { PlusCircle, MinusCircle, Wallet, Pencil, Trash2 } from "lucide-react";
 import { TransactionDialog } from "@/components/transaction-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { getTransactions, addTransaction, updateTransaction, deleteTransaction } from "@/services/transaction-service";
 
-
-const initialTransactions: Transaction[] = [];
 
 export default function DashboardPage() {
   const { t } = useLanguage();
@@ -32,48 +31,31 @@ export default function DashboardPage() {
   const { userPhone, isAuthenticated } = useAuth();
   const router = useRouter();
   
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"in" | "out">("in");
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  // Redirect if not authenticated
   useEffect(() => {
     if (!isAuthenticated) {
       router.push("/login");
     }
   }, [isAuthenticated, router]);
 
-  // Load and save transactions from/to localStorage based on userPhone
-  useEffect(() => {
+  const loadTransactions = useCallback(async () => {
     if (isAuthenticated && userPhone) {
-      try {
-        const savedTransactions = window.localStorage.getItem(`transactions-${userPhone}`);
-        if (savedTransactions) {
-          setTransactions(JSON.parse(savedTransactions).map((tx: Transaction) => ({
-            ...tx,
-            date: new Date(tx.date),
-          })));
-        } else {
-            setTransactions(initialTransactions);
-        }
-      } catch (error) {
-        console.error("Error reading from localStorage", error);
-        setTransactions(initialTransactions);
-      }
+      setIsLoading(true);
+      const userTransactions = await getTransactions(userPhone);
+      setTransactions(userTransactions);
+      setIsLoading(false);
     }
   }, [isAuthenticated, userPhone]);
-  
+
   useEffect(() => {
-    if (isAuthenticated && userPhone) {
-      try {
-        window.localStorage.setItem(`transactions-${userPhone}`, JSON.stringify(transactions));
-      } catch (error) {
-        console.error("Error writing to localStorage", error);
-      }
-    }
-  }, [transactions, isAuthenticated, userPhone]);
+    loadTransactions();
+  }, [loadTransactions]);
 
 
   const balance = useMemo(() => {
@@ -82,25 +64,23 @@ export default function DashboardPage() {
     }, 0);
   }, [transactions]);
 
-  const handleAddOrUpdateTransaction = (transactionData: Omit<Transaction, "id" | "date"> & { id?: string; date?: Date }) => {
+  const handleAddOrUpdateTransaction = async (transactionData: Omit<Transaction, "id" | "date"> & { id?: string; date?: Date }) => {
+    if (!userPhone) return;
+    
     if (editingTransaction && transactionData.id) {
-      // Update existing transaction
-      setTransactions(transactions.map(tx => 
-        tx.id === transactionData.id ? { ...tx, ...transactionData, date: tx.date } : tx
-      ));
+      await updateTransaction(userPhone, { ...transactionData, date: editingTransaction.date } as Transaction);
       toast({ title: "✅ Transaction updated!" });
     } else {
-      // Add new transaction
-      setTransactions([
-        { ...transactionData, id: new Date().toISOString(), date: new Date() },
-        ...transactions,
-      ]);
+      await addTransaction(userPhone, { ...transactionData, type: dialogMode });
     }
+    await loadTransactions();
     setEditingTransaction(null);
   };
   
-  const handleDeleteTransaction = (id: string) => {
-    setTransactions(transactions.filter(tx => tx.id !== id));
+  const handleDeleteTransaction = async (id: string) => {
+    if (!userPhone) return;
+    await deleteTransaction(userPhone, id);
+    await loadTransactions();
     toast({ title: "🗑️ Transaction deleted", variant: "destructive" });
   };
 
@@ -115,9 +95,14 @@ export default function DashboardPage() {
     setEditingTransaction(null);
   }
 
-  if (!isAuthenticated) {
-    // Render nothing or a loading spinner while redirecting
-    return null;
+  if (!isAuthenticated || isLoading) {
+    return (
+      <MainLayout>
+        <div className="flex justify-center items-center h-full">
+           <p>Loading...</p>
+        </div>
+      </MainLayout>
+    )
   }
 
   return (
@@ -170,7 +155,7 @@ export default function DashboardPage() {
                   transactions.slice(0, 5).map((tx) => (
                     <TableRow key={tx.id}>
                       <TableCell>
-                        {tx.date.toLocaleDateString()}
+                        {new Date(tx.date).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="font-medium">
                         {tx.description}
