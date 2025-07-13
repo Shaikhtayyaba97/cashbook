@@ -1,6 +1,7 @@
+
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import MainLayout from "@/components/main-layout";
 import { useLanguage } from "@/contexts/language-provider";
 import type { Transaction } from "@/lib/types";
@@ -23,23 +24,29 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ArrowUpRight, ArrowDownLeft, Scale } from "lucide-react";
 
-const dummyTransactions: Transaction[] = [
-  { id: "1", type: "in", amount: 50000, description: "Salary - Jan", date: new Date("2024-01-01") },
-  { id: "2", type: "out", amount: 15000, description: "Rent - Jan", date: new Date("2024-01-05") },
-  { id: "3", type: "in", amount: 75000, description: "Salary - Feb", date: new Date("2024-02-01") },
-  { id: "4", type: "out", amount: 15000, description: "Rent - Feb", date: new Date("2024-02-05") },
-  { id: "5", type: "out", amount: 5000, description: "Utilities - Feb", date: new Date("2024-02-10") },
-  { id: "6", type: "in", amount: 75000, description: "Salary - Mar", date: new Date("2024-03-01") },
-  { id: "7", type: "out", amount: 15000, description: "Rent - Mar", date: new Date("2024-03-05") },
-];
-
-
 export default function ReportsPage() {
   const { t } = useLanguage();
-  const [transactions] = useState<Transaction[]>(dummyTransactions);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().getMonth().toString()
   );
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedTransactions = window.localStorage.getItem("transactions");
+        if (savedTransactions) {
+          setTransactions(JSON.parse(savedTransactions).map((tx: Transaction) => ({
+            ...tx,
+            date: new Date(tx.date),
+          })));
+        }
+      } catch (error) {
+        console.error("Error reading from localStorage", error);
+        setTransactions([]);
+      }
+    }
+  }, []);
 
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i.toString(),
@@ -115,7 +122,7 @@ export default function ReportsPage() {
               <Scale className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className={`text-2xl font-bold ${summary.netBalance < 0 ? 'text-destructive' : ''}`}>
                 PKR {summary.netBalance.toLocaleString()}
               </div>
             </CardContent>
@@ -138,7 +145,7 @@ export default function ReportsPage() {
               </TableHeader>
               <TableBody>
                 {filteredTransactions.length > 0 ? (
-                  filteredTransactions.map((tx) => (
+                  filteredTransactions.sort((a,b) => b.date.getTime() - a.date.getTime()).map((tx) => (
                     <TableRow key={tx.id}>
                        <TableCell>
                         {tx.date.toLocaleDateString()}
@@ -156,7 +163,7 @@ export default function ReportsPage() {
                       </TableCell>
                       <TableCell
                         className={`text-right font-medium ${
-                          tx.type === "in" ? "text-accent-foreground" : "text-destructive"
+                          tx.type === "in" ? "text-accent" : "text-destructive"
                         }`}
                       >
                         {tx.type === "in" ? "+" : "-"} PKR {tx.amount.toLocaleString()}
