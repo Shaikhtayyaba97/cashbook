@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import type { Transaction } from "@/lib/types";
 import { useLanguage } from "@/contexts/language-provider";
 import MainLayout from "@/components/main-layout";
@@ -18,43 +18,40 @@ import { Badge } from "@/components/ui/badge";
 import { PlusCircle, MinusCircle, Wallet } from "lucide-react";
 import { TransactionDialog } from "@/components/transaction-dialog";
 
-const initialTransactions: Transaction[] = [
-  {
-    id: "1",
-    type: "in",
-    amount: 5000,
-    description: "Salary",
-    date: new Date(new Date().setDate(1)),
-  },
-  {
-    id: "2",
-    type: "out",
-    amount: 1200,
-    description: "Groceries",
-    date: new Date(new Date().setDate(2)),
-  },
-  {
-    id: "3",
-    type: "out",
-    amount: 300,
-    description: "Coffee",
-    date: new Date(new Date().setDate(3)),
-  },
-  {
-    id: "4",
-    type: "in",
-    amount: 500,
-    description: "Freelance Project",
-    date: new Date(new Date().setDate(5)),
-  },
-];
+const initialTransactions: Transaction[] = [];
 
 export default function DashboardPage() {
   const { t } = useLanguage();
-  const [transactions, setTransactions] =
-    useState<Transaction[]>(initialTransactions);
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    if (typeof window === 'undefined') {
+      return initialTransactions;
+    }
+    try {
+      const savedTransactions = window.localStorage.getItem("transactions");
+      if (savedTransactions) {
+        // Parse and revive dates
+        return JSON.parse(savedTransactions).map((tx: Transaction) => ({
+          ...tx,
+          date: new Date(tx.date),
+        }));
+      }
+    } catch (error) {
+      console.error("Error reading from localStorage", error);
+    }
+    return initialTransactions;
+  });
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"in" | "out">("in");
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("transactions", JSON.stringify(transactions));
+    } catch (error) {
+      console.error("Error writing to localStorage", error);
+    }
+  }, [transactions]);
+
 
   const balance = useMemo(() => {
     return transactions.reduce((acc, curr) => {
@@ -131,14 +128,14 @@ export default function DashboardPage() {
                       <TableCell>
                         <Badge
                           variant={tx.type === "in" ? "secondary" : "destructive"}
-                          className={tx.type === "in" ? 'bg-accent/20 text-accent-foreground border-accent/20' : ''}
+                          className={tx.type === 'in' ? 'bg-accent/20 text-accent-foreground border-accent/20' : ''}
                         >
                           {t(tx.type === 'in' ? 'cash_in' : 'cash_out')}
                         </Badge>
                       </TableCell>
                       <TableCell
                         className={`text-right font-medium ${
-                          tx.type === "in" ? "text-accent-foreground" : "text-destructive"
+                          tx.type === "in" ? "text-accent" : "text-destructive"
                         }`}
                       >
                         {tx.type === "in" ? "+" : "-"} PKR {tx.amount.toLocaleString()}
