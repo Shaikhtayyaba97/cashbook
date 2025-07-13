@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useLanguage } from "@/contexts/language-provider";
+import { useAuth } from "@/contexts/auth-provider";
 import LanguageSwitcher from "@/components/language-switcher";
 import { HandCoins } from "lucide-react";
 import { Button } from "./ui/button";
@@ -9,7 +10,13 @@ import { useRouter } from "next/navigation";
 
 export default function Header() {
   const { t } = useLanguage();
+  const { logout } = useAuth();
   const router = useRouter();
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
 
   return (
     <header className="bg-card border-b shadow-sm sticky top-0 z-40">
@@ -33,7 +40,7 @@ export default function Header() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.push("/login")}
+            onClick={handleLogout}
           >
             {t("logout")}
           </Button>

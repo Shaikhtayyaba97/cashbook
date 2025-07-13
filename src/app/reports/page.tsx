@@ -2,8 +2,10 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import MainLayout from "@/components/main-layout";
 import { useLanguage } from "@/contexts/language-provider";
+import { useAuth } from "@/contexts/auth-provider";
 import type { Transaction } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -31,6 +33,9 @@ import { useToast } from "@/hooks/use-toast";
 export default function ReportsPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { userPhone, isAuthenticated } = useAuth();
+  const router = useRouter();
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().getMonth().toString()
@@ -41,28 +46,35 @@ export default function ReportsPage() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (!isAuthenticated) {
+      router.push("/login");
+    }
+  }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    if (isAuthenticated && userPhone) {
       try {
-        const savedTransactions = window.localStorage.getItem("transactions");
+        const savedTransactions = window.localStorage.getItem(`transactions-${userPhone}`);
         if (savedTransactions) {
           setTransactions(JSON.parse(savedTransactions).map((tx: Transaction) => ({
             ...tx,
             date: new Date(tx.date),
           })));
+        } else {
+            setTransactions([]);
         }
       } catch (error) {
         console.error("Error reading from localStorage", error);
         setTransactions([]);
       }
     }
-  }, []);
+  }, [isAuthenticated, userPhone]);
 
   useEffect(() => {
-    // This effect runs when transactions change on another page
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'transactions') {
+      if (isAuthenticated && userPhone && event.key === `transactions-${userPhone}`) {
         try {
-            const savedTransactions = window.localStorage.getItem("transactions");
+            const savedTransactions = window.localStorage.getItem(`transactions-${userPhone}`);
             if (savedTransactions) {
                 setTransactions(JSON.parse(savedTransactions).map((tx: Transaction) => ({
                     ...tx,
@@ -80,7 +92,7 @@ export default function ReportsPage() {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [isAuthenticated, userPhone]);
 
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i.toString(),
@@ -122,14 +134,18 @@ export default function ReportsPage() {
       ];
     }
     setTransactions(updatedTransactions);
-    window.localStorage.setItem("transactions", JSON.stringify(updatedTransactions));
+    if (isAuthenticated && userPhone) {
+        window.localStorage.setItem(`transactions-${userPhone}`, JSON.stringify(updatedTransactions));
+    }
     setEditingTransaction(null);
   };
 
   const handleDeleteTransaction = (id: string) => {
     const updatedTransactions = transactions.filter(tx => tx.id !== id);
     setTransactions(updatedTransactions);
-    window.localStorage.setItem("transactions", JSON.stringify(updatedTransactions));
+     if (isAuthenticated && userPhone) {
+        window.localStorage.setItem(`transactions-${userPhone}`, JSON.stringify(updatedTransactions));
+    }
     toast({ title: "🗑️ Transaction deleted", variant: "destructive" });
   };
   
@@ -142,6 +158,10 @@ export default function ReportsPage() {
   const closeDialog = () => {
     setDialogOpen(false);
     setEditingTransaction(null);
+  }
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   return (

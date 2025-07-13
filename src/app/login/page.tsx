@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/language-provider";
+import { useAuth } from "@/contexts/auth-provider";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -30,10 +31,11 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { t, dir } = useLanguage();
+  const { login } = useAuth();
 
   const loginSchema = z.object({
-    phone: z.string().min(10, "Phone number is too short"),
-    password: z.string().min(6, "Password must be at least 6 characters"),
+    phone: z.string().min(1, "Phone number is required"),
+    password: z.string().min(1, "Password is required"),
   });
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
@@ -42,9 +44,7 @@ export default function LoginPage() {
   });
 
   function onLoginSubmit(values: z.infer<typeof loginSchema>) {
-    console.log(values);
-    // In a real app, you'd call your authentication API here.
-    // For this prototype, we'll just show a success message and redirect.
+    login(values.phone);
     toast({
       title: "✅ " + t("login_success"),
       description: "Redirecting to your dashboard...",

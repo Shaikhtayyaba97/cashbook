@@ -2,8 +2,10 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import type { Transaction } from "@/lib/types";
 import { useLanguage } from "@/contexts/language-provider";
+import { useAuth } from "@/contexts/auth-provider";
 import MainLayout from "@/components/main-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,35 +29,51 @@ const initialTransactions: Transaction[] = [];
 export default function DashboardPage() {
   const { t } = useLanguage();
   const { toast } = useToast();
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    if (typeof window === 'undefined') {
-      return initialTransactions;
-    }
-    try {
-      const savedTransactions = window.localStorage.getItem("transactions");
-      if (savedTransactions) {
-        return JSON.parse(savedTransactions).map((tx: Transaction) => ({
-          ...tx,
-          date: new Date(tx.date),
-        }));
-      }
-    } catch (error) {
-      console.error("Error reading from localStorage", error);
-    }
-    return initialTransactions;
-  });
+  const { userPhone, isAuthenticated } = useAuth();
+  const router = useRouter();
+  
+  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"in" | "out">("in");
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
+  // Redirect if not authenticated
   useEffect(() => {
-    try {
-      window.localStorage.setItem("transactions", JSON.stringify(transactions));
-    } catch (error) {
-      console.error("Error writing to localStorage", error);
+    if (!isAuthenticated) {
+      router.push("/login");
     }
-  }, [transactions]);
+  }, [isAuthenticated, router]);
+
+  // Load and save transactions from/to localStorage based on userPhone
+  useEffect(() => {
+    if (isAuthenticated && userPhone) {
+      try {
+        const savedTransactions = window.localStorage.getItem(`transactions-${userPhone}`);
+        if (savedTransactions) {
+          setTransactions(JSON.parse(savedTransactions).map((tx: Transaction) => ({
+            ...tx,
+            date: new Date(tx.date),
+          })));
+        } else {
+            setTransactions(initialTransactions);
+        }
+      } catch (error) {
+        console.error("Error reading from localStorage", error);
+        setTransactions(initialTransactions);
+      }
+    }
+  }, [isAuthenticated, userPhone]);
+  
+  useEffect(() => {
+    if (isAuthenticated && userPhone) {
+      try {
+        window.localStorage.setItem(`transactions-${userPhone}`, JSON.stringify(transactions));
+      } catch (error) {
+        console.error("Error writing to localStorage", error);
+      }
+    }
+  }, [transactions, isAuthenticated, userPhone]);
 
 
   const balance = useMemo(() => {
@@ -95,6 +113,11 @@ export default function DashboardPage() {
   const closeDialog = () => {
     setDialogOpen(false);
     setEditingTransaction(null);
+  }
+
+  if (!isAuthenticated) {
+    // Render nothing or a loading spinner while redirecting
+    return null;
   }
 
   return (
